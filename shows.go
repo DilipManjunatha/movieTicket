@@ -6,7 +6,7 @@ package main
 // Assumption - Max Sodas available per day is 200. Theatres have to reset the available count everyday
 // Assumption - Theatre details will be added before adding screen-wise show details, selling tickets or exchanging soda
 
-/* Sample Peer commands for various functions
+/********************* Sample Peer commands for various functions ************************************
 
 peer chaincode invoke -n moviecc -c '{"args":["asd","{\"moviename\":\"B\", \"screen\":\"1\", \"thid\":\"pvrjp\", \"showcode\": [\"3\",\"2\"]}"]}' -C movieTheatre
 
@@ -14,10 +14,11 @@ peer chaincode invoke -n moviecc -c '{"args":["gss","{\"selector\": {\"thid\": \
 
 peer chaincode invoke -n moviecc -c '{"args":["athd","{\"thid\":\"pvrjp\", \"sph\": {\"1\":\"100\",\"2\":\"100\",\"3\":\"100\",\"4\":\"100\",\"5\":\"100\"}}"]}' -C movieTheatre
 
-peer chaincode invoke -n moviecc -c '{"args":["exs","{\"thid\":\"pvrjp\", \"inventoryid\": \"ES13\"]}"]}' -C myc
+peer chaincode invoke -n moviecc -c '{"args":["exs","{\"thid\":\"pvrjp\", \"inventoryid\": \"ES13\"]}"]}' -C movieTheatre
 
-peer chaincode invoke -n mycc -c '{"args":["exs","{\"thid\": \"pvrjp\", \"movie\":\"Lucy\", \"screen\":\"1\", \"showtime\":\"2\", \"sold\":\"3\"}"]}' -C movieTheatre
-*/
+peer chaincode invoke -n moviecc -c '{"args":["exs","{\"thid\": \"pvrjp\", \"movie\":\"Lucy\", \"screen\":\"1\", \"showtime\":\"2\", \"sold\":\"3\"}"]}' -C movieTheatre
+
+***********************************************************************************************************/
 
 import (
 	"encoding/json"
@@ -197,6 +198,7 @@ func (s *ShowsManagement) addShowDetails(stub shim.ChaincodeStubInterface, args 
 	return shim.Success(respjson)
 }
 
+// Get show details on a particular screen of a movie theatre
 func (s *ShowsManagement) getShowDetails(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 
 	if len(args) != 1 {
@@ -240,6 +242,7 @@ func (s *ShowsManagement) getShowDetails(stub shim.ChaincodeStubInterface, args 
 	return shim.Success(respjson)
 }
 
+// Add theatre details
 func (s *ShowsManagement) addTheatreDetails(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	if len(args) != 1 {
 		_logger.Info("addTheatreDetails: Incorrect number of arguments provided for the transaction.")
@@ -293,6 +296,7 @@ func (s *ShowsManagement) addTheatreDetails(stub shim.ChaincodeStubInterface, ar
 	return shim.Success(respJSON)
 }
 
+// Sell tickets. 1 popcorn and 1 water bottle issued per ticket
 func (s *ShowsManagement) sellTicket(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	var compositeKey string
 
@@ -448,6 +452,7 @@ func (s *ShowsManagement) sellTicket(stub shim.ChaincodeStubInterface, args []st
 
 }
 
+// Exchange water with soda
 func (s *ShowsManagement) exchangeSoda(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 
 	if !generateRandomNumber() {
@@ -582,6 +587,7 @@ func (s *ShowsManagement) exchangeSoda(stub shim.ChaincodeStubInterface, args []
 	return shim.Success(respjson)
 }
 
+// Generates random number - Decides if the customer is lucky to exchange one for water bottle :)
 func generateRandomNumber() bool {
 
 	// Generate Random number
