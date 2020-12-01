@@ -1,0 +1,28 @@
+################################################
+Test cases to execute as peer commands
+################################################
+
+***** Negative cases *****
+
+1. Add show details before adding theatre details
+   Input: peer chaincode invoke -n moviecc -c '{"args":["exs","{\"thid\":\"Theatre1\", \"inventoryid\": \"ES13\", \"soda\": 1, \"cts\":\"1606791828\", \"uts\": \"1606791828\"}"]}' -C movieTheatre
+   Expected Result: Error message expected in chaincode log -> "addOrModifyShowDetails:{"Data":theatre1,"ErrorDetails":"Theatre details does not exists for :theatre1"}"
+
+2. Sell tickets before adding show details
+   Input: peer chaincode invoke -n moviecc -c '{"args":["sell","{\"thid\": \"Theatre1\", \"moviename\":\"Lucy\", \"screen\":\"SC1\", \"showcode\":\"2\", \"ticketsold\": 3}"]}' -C movieTheatre
+   Expected Result: Error message expected in chaincode log -> "sellTicket:{"Data":,"ErrorDetails":"Show details does not exists for the given details"}"
+
+3. Exchange soda before adding theatre details
+   Input: peer chaincode invoke -n mycc -c '{"args":["exs","{\"thid\":\"Theatre1\", \"inventoryid\": \"ES13\", \"soda\": 1, \"cts\":\"1606791828\", \"uts\": \"1606791828\"}"]}' -C mychannel
+   Expected Result: Generates random number. If even number is generated, Error message expected in chaincode log -> exchangeSoda:{"Data":{"thid":"Theatre1", "inventoryid": "ES13", "soda": "1", "cts":"1606791828", "uts": "1606791828"]},"ErrorDetails":"Theatre details does not exists"}
+
+4. Issue invalid json input as parameter to any chaincode functions
+   Example of soda exchange chaincode function:
+   Input: peer chaincode invoke -n moviecc -c '{"args":["exs","{\"thid\":\"Theatre1\", \"inventoryid\": \"ES13\"}"]}' -C movieTheatre
+   Expected Result: Error message expected in chaincode log -> exchangeSoda:{"Data":{"thid":"Theatre1", "inventoryid": "ES13"]},"ErrorDetails":"Invalid json provided as input"}
+
+****************************
+ 
+5. Add theatre details
+   Input: 
+

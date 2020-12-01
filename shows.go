@@ -1,22 +1,27 @@
 package main
 
-// Assumption - Fixed showcode for all movie halls and theatres (ex: 9AM, 12PM, 3PM, 7PM)
+// Assumption - Fixed showcode for all movie halls and theatres (ex: "1", "2", "3", "4")
 // Assumption - Theatres will trigger reset(through  API) of available tickets and inventory for all shows every day before the first show
 // Assumption - Movie names are in English and no Unicode characters
 // Assumption - Max Sodas available per day is 200. Theatres have to reset the available count everyday
 // Assumption - Theatre details will be added before adding screen-wise show details, selling tickets or exchanging soda
+// Assumtion - Only 1 cafeteria inventory per theatre
+// Assumption - All the mandatory parameters will be provided as per the function requirement i,e non-null values.
+
+// All inputs are case sensitive
+// More than one theatre can add the data on to Blockchain
 
 /********************* Sample Peer commands for various functions ************************************
 
-peer chaincode invoke -n moviecc -c '{"args":["asd","{\"moviename\":\"B\", \"screen\":\"1\", \"thid\":\"pvrjp\", \"showcode\": [\"3\",\"2\"]}"]}' -C movieTheatre
+peer chaincode invoke -n moviecc -c '{"args":["asd","{\"moviename\":\"Lucy\", \"screen\":\"1\", \"thid\":\"Theatre1\", \"showcode\": [\"1\",\"2\",\"3\",\"4\"]}"]}' -C movieTheatre
 
-peer chaincode invoke -n moviecc -c '{"args":["gss","{\"selector\": {\"thid\": \"pvrjp\"}}"]}' -C movieTheatre
+peer chaincode invoke -n moviecc -c '{"args":["gss","{\"selector\": {\"thid\": \"Theatre1\"}}"]}' -C movieTheatre
 
-peer chaincode invoke -n moviecc -c '{"args":["athd","{\"thid\":\"pvrjp\", \"sph\": {\"1\":\"100\",\"2\":\"100\",\"3\":\"100\",\"4\":\"100\",\"5\":\"100\"}}"]}' -C movieTheatre
+peer chaincode invoke -n moviecc -c '{"args":["athd","{\"thid\":\"Theatre1\", \"maxsoda\": 200, \"sph\": {\"SC1\": 100 ,\"SC2\": 100,\"SC3\": 100,\"SC4\": 100,\"SC5\": 100}, \"cts\":\"1606791828\", \"uts\": \"1606791828\"}"]}' -C movieTheatre
 
-peer chaincode invoke -n moviecc -c '{"args":["exs","{\"thid\":\"pvrjp\", \"inventoryid\": \"ES13\"]}"]}' -C movieTheatre
+peer chaincode invoke -n moviecc -c '{"args":["exs","{\"thid\":\"Theatre1\", \"inventoryid\": \"ES13\", \"cts\":\"1606791828\", \"uts\": \"1606791828\"}"]}' -C movieTheatre
 
-peer chaincode invoke -n moviecc -c '{"args":["exs","{\"thid\": \"pvrjp\", \"movie\":\"Lucy\", \"screen\":\"1\", \"showtime\":\"2\", \"sold\":\"3\"}"]}' -C movieTheatre
+peer chaincode invoke -n moviecc -c '{"args":["sell","{\"thid\": \"Theatre1\", \"moviename\":\"Lucy\", \"screen\":\"SC1\", \"showcode\":\"2\", \"ticketsold\": 3, \"cts\":\"1606791828\", \"uts\": \"1606791828\"}"]}' -C movieTheatre
 
 ***********************************************************************************************************/
 
@@ -34,41 +39,49 @@ import (
 
 var _logger = shim.NewLogger("Shows-logger")
 
-// ShowDetails maintains the show related details
+// ShowDetails maintains the show related details.
 type ShowDetails struct {
-	ObjType   string   `json:"obj"`
-	MovieName string   `json:"moviename"`
-	Screen    string   `json:"screen"`
-	TheatreID string   `json:"thid"`
-	ShowCode  []string `json:"showcode"`
+	ObjType   string    `json:"obj"`
+	MovieName string    `json:"moviename"`
+	Screen    string    `json:"screen"` // Alphanumeric
+	TheatreID string    `json:"thid"`   // Alphanumeric
+	ShowCode  [4]string `json:"showcode"`
+	CreateTs  string    `json:"cts"` // epoch format
+	UpdateTs  string    `json:"uts"` // epoch format
 }
 
 // TheatreDetails has movie hall-wise max capacity and inventory capacity details
 type TheatreDetails struct {
-	ObjType       string            `json:"obj"`
-	TheatreID     string            `json:"thid"`
-	SeatsPerHall  map[string]string `json:"sph"`
-	MaxSodaPerDay string            `json:maxsoda`
+	ObjType       string           `json:"obj"`
+	TheatreID     string           `json:"thid"`    // Alphanumeric. Unique for each theatre
+	SeatsPerHall  map[string]uint8 `json:"sph"`     // (Max seats count can be set by the theatre. Not hardcoded as 100(as per instruction) to keep it configurable)
+	MaxSodaPerDay uint8            `json:"maxsoda"` // Min 0, Max - Count can be set by the theatre. Not hardcoded as 200(as per instruction) to keep it configurable
+	CreateTs      string           `json:"cts"`     // epoch format
+	UpdateTs      string           `json:"uts"`     // epoch format
 }
 
 // SodaInventory keeps track of day-wise soda sale.
 type SodaInventory struct {
 	ObjType     string `json:"obj"`
-	TheatreID   string `json:"thid"`
-	InventoryID string `json:"inventoryid"`
-	SodaSold    string `json:"soda"`
+	TheatreID   string `json:"thid"`        // Alphanumeric
+	InventoryID string `json:"inventoryid"` // Alphanumeric
+	SodaSold    uint8  `json:"soda"`        // Min 0, Max - Count set by the theatre in "TheatreDetails" struct.
+	CreateTs    string `json:"cts"`         // epoch format
+	UpdateTs    string `json:"uts"`         // epoch format
 }
 
-// Tickets is the show-wise state data
+// Tickets is the show-wise state data.
 type Tickets struct {
 	ObjType     string `json:"obj"`
-	TheatreID   string `json:"thid"`
-	MovieName   string `json:"movie"`
-	Screen      string `json:"screen"`
-	ShowTime    string `json:"showcode"`
-	TicketsSold string `json:"sold"`
-	PopCornSold string `json:"pcsold"`
-	WaterSold   string `json:"watersold"`
+	TheatreID   string `json:"thid"`       // Alphanumeric
+	MovieName   string `json:"moviename"`  //
+	Screen      string `json:"screen"`     // Alphanumeric
+	ShowCode    string `json:"showcode"`   //
+	TicketsSold uint8  `json:"ticketsold"` //  Min 0, Max - Count set by the theatre in "TheatreDetails" struct.
+	PopCornSold uint8  `json:"pcsold"`     //  Min 0, Max - Equals tickets TicketsSold
+	WaterSold   uint8  `json:"watersold"`  //  Min 0, Max - Equals tickets TicketsSold
+	CreateTs    string `json:"cts"`        // epoch format
+	UpdateTs    string `json:"uts"`        // epoch format
 }
 
 // ShowsManagement is the chaincode construct
@@ -92,7 +105,7 @@ func (s *ShowsManagement) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 
 	switch fn {
 	case "asd":
-		return s.addShowDetails(stub, args)
+		return s.addOrModifyShowDetails(stub, args)
 	case "exs":
 		return s.exchangeSoda(stub, args)
 	case "athd":
@@ -109,9 +122,10 @@ func (s *ShowsManagement) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 }
 
 // Add movie name and show timings for a particular screen in a theatre
-func (s *ShowsManagement) addShowDetails(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+func (s *ShowsManagement) addOrModifyShowDetails(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+
 	if len(args) != 1 {
-		_logger.Info("addShowDetails: Incorrect number of arguments provided for the transaction.")
+		_logger.Info("addOrModifyShowDetails: Incorrect number of arguments provided for the transaction.")
 		jsonResp = "{\"Data\":" + strconv.Itoa(len(args)) + ",\"ErrorDetails\":\"Invalid Number of argumnets provided for transaction\"}"
 		return shim.Error(jsonResp)
 	}
@@ -122,14 +136,14 @@ func (s *ShowsManagement) addShowDetails(stub shim.ChaincodeStubInterface, args 
 		errorKey = args[0]
 		errorData = "Invalid json provided as input"
 		jsonResp = "{\"Data\":" + errorKey + ",\"ErrorDetails\":\"" + errorData + "\"}"
-		_logger.Error("addShowDetails:" + string(jsonResp))
+		_logger.Error("addOrModifyShowDetails:" + string(jsonResp))
 		return shim.Error(jsonResp)
 	}
 
-	sc := strings.ToLower(sd.Screen)
-	thid := strings.ToLower(sd.TheatreID)
+	sc := sd.Screen
+	thid := sd.TheatreID
 
-	// Check if the theatre details is added for the movie hall. If not present, do not process the request
+	/* Check if the theatre details is added for the movie hall. If not present, do not process the request */
 	theatreDetails, err := stub.GetState(thid)
 
 	if err != nil {
@@ -137,59 +151,78 @@ func (s *ShowsManagement) addShowDetails(stub shim.ChaincodeStubInterface, args 
 		replaceErr := strings.Replace(err.Error(), "\"", " ", -1)
 		errorData = "GetState is Failed :" + replaceErr
 		jsonResp = "{\"Data\":" + errorKey + ",\"ErrorDetails\":\"" + errorData + "\"}"
-		_logger.Error("addShowDetails:" + string(jsonResp))
+		_logger.Error("addOrModifyShowDetails:" + string(jsonResp))
 		return shim.Error(jsonResp)
 	}
 	if theatreDetails == nil {
 		errorData = "Theatre details does not exists for :" + string(thid)
 		jsonResp = "{\"Data\":" + thid + ",\"ErrorDetails\":\"" + errorData + "\"}"
-		_logger.Error("addShowDetails:" + string(jsonResp))
+		_logger.Error("addOrModifyShowDetails:" + string(jsonResp))
 		return shim.Error(jsonResp)
 	}
 
-	compositeKey := thid + sc                       // Form composite key with TheatreID and ScreenCode
-	movieExists, err := stub.GetState(compositeKey) // Check if the show details of a particular movie hall is added by a theatre
+	compositeKey := thid + sc // Form composite key with TheatreID and ScreenCode
+	// Check if the movie-hall/screen details is present with the theatre
+	screenExists, err := stub.GetState(compositeKey)
 
 	if err != nil {
 		errorKey = thid
 		replaceErr := strings.Replace(err.Error(), "\"", " ", -1)
 		errorData = "GetState is Failed :" + replaceErr
 		jsonResp = "{\"Data\":" + errorKey + ",\"ErrorDetails\":\"" + errorData + "\"}"
-		_logger.Error("addShowDetails:" + string(jsonResp))
+		_logger.Error("addOrModifyShowDetails:" + string(jsonResp))
 		return shim.Error(jsonResp)
 	}
-	if movieExists != nil {
-		errorData = "Show details already added by " + string(thid)
-		jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"" + errorData + "\"}"
-		_logger.Error("addShowDetails:" + string(jsonResp))
-		return shim.Error(jsonResp)
-	}
+	if screenExists != nil {
 
-	// Check if the movie-hall/screen details is present with the theatre
-	td := TheatreDetails{}
-	err = json.Unmarshal(theatreDetails, &td)
-	if err != nil {
-		errorData = "Existing theatre details Unmarshalling error"
-		jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"" + errorData + "\"}"
-		_logger.Error("sellTicket:" + string(jsonResp))
-		return shim.Error(jsonResp)
-	}
-	if td.SeatsPerHall[sc] == "" {
-		errorData = "This screen details does not exists for the theatre"
-		jsonResp = "{\"Data\":" + sc + ",\"ErrorDetails\":\"" + errorData + "\"}"
-		_logger.Error("addShowDetails:" + string(jsonResp))
-		return shim.Error(jsonResp)
-	}
+		screendetail := ShowDetails{}
+		err = json.Unmarshal(screenExists, &screendetail)
+		if err != nil {
+			errorData = "Existing show details Unmarshalling error"
+			jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"" + errorData + "\"}"
+			_logger.Error("addOrModifyShowDetails:" + string(jsonResp))
+			return shim.Error(jsonResp)
+		}
 
-	sd.ObjType = "ShowDetails"
-	sdjson, err := json.Marshal(sd)
-	err = stub.PutState(compositeKey, sdjson)
-	if err != nil {
-		_logger.Errorf("addShowDetails:PutState is Failed :" + string(err.Error()))
-		jsonResp = "{\"Data\":" + thid + ",\"ErrorDetails\":\"Unable to add the show details\"}"
-		return shim.Error(jsonResp)
+		sd.ObjType = "ShowDetails"
+		sd.UpdateTs = screendetail.UpdateTs
+		sdjson, _ := json.Marshal(sd)
+		err = stub.PutState(compositeKey, sdjson)
+		if err != nil {
+			_logger.Errorf("addOrModifyShowDetails:PutState is Failed :" + string(err.Error()))
+			jsonResp = "{\"Data\":" + thid + ",\"ErrorDetails\":\"Unable to add the show details\"}"
+			return shim.Error(jsonResp)
+		}
+		_logger.Infof("addOrModifyShowDetails:Show details added succesfully for theatre :" + string(thid))
+
+	} else {
+
+		// Validate the screen detail against the respective theatre details
+		td := TheatreDetails{}
+		err = json.Unmarshal(theatreDetails, &td)
+		if err != nil {
+			errorData = "Existing theatre details Unmarshalling error"
+			jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"" + errorData + "\"}"
+			_logger.Error("addOrModifyShowDetails:" + string(jsonResp))
+			return shim.Error(jsonResp)
+		}
+		if td.SeatsPerHall[sc] == 0 {
+			errorData = "This screen details does not exists for the theatre"
+			jsonResp = "{\"Data\":" + sc + ",\"ErrorDetails\":\"" + errorData + "\"}"
+			_logger.Error("addOrModifyShowDetails:" + string(jsonResp))
+			return shim.Error(jsonResp)
+		}
+
+		sd.ObjType = "ShowDetails"
+		sdjson, _ := json.Marshal(sd)
+		err = stub.PutState(compositeKey, sdjson)
+		if err != nil {
+			_logger.Errorf("addOrModifyShowDetails:PutState is Failed :" + string(err.Error()))
+			jsonResp = "{\"Data\":" + thid + ",\"ErrorDetails\":\"Unable to add the show details\"}"
+			return shim.Error(jsonResp)
+		}
+		_logger.Infof("addOrModifyShowDetails:Show details added succesfully for theatre :" + string(thid))
 	}
-	_logger.Infof("addShowDetails:Show details added succesfully for theatre :" + string(thid))
 	result := map[string]interface{}{
 		"trxnid":  stub.GetTxID(),
 		"message": "Add Show Detail Success",
@@ -260,7 +293,7 @@ func (s *ShowsManagement) addTheatreDetails(stub shim.ChaincodeStubInterface, ar
 		return shim.Error(jsonResp)
 	}
 
-	thid := strings.ToLower(td.TheatreID)
+	thid := td.TheatreID
 	theatreExists, err := stub.GetState(thid) // Check if the theatre details is already added
 
 	if err != nil {
@@ -279,7 +312,7 @@ func (s *ShowsManagement) addTheatreDetails(stub shim.ChaincodeStubInterface, ar
 	}
 
 	td.ObjType = "TheatreDetails"
-	tdjson, err := json.Marshal(td)
+	tdjson, _ := json.Marshal(td)
 	err = stub.PutState(thid, tdjson)
 
 	if err != nil {
@@ -316,9 +349,9 @@ func (s *ShowsManagement) sellTicket(stub shim.ChaincodeStubInterface, args []st
 		return shim.Error(jsonResp)
 	}
 
-	thid := strings.ToLower(tkt.TheatreID)
-	sc := strings.ToLower(tkt.Screen)
-	st := tkt.ShowTime
+	thid := tkt.TheatreID
+	sc := tkt.Screen
+	st := tkt.ShowCode
 
 	// Check if the show details are available
 	compositeKey = thid + sc
@@ -341,7 +374,16 @@ func (s *ShowsManagement) sellTicket(stub shim.ChaincodeStubInterface, args []st
 
 	_logger.Info("All Show's details on the current screen: " + string(showDetails))
 
-	// Check if tickets sales already for any given showcode of particular movie-hall
+	// Validation for ticket count
+	if tkt.TicketsSold == 0 {
+		errorKey = string(tkt.TicketsSold)
+		errorData = "Invalid request to sell tickets. Expected 1 or more ticket count"
+		jsonResp = "{\"Data\":" + errorKey + ",\"ErrorDetails\":\"" + errorData + "\"}"
+		_logger.Error("sellTicket:" + string(jsonResp))
+		return shim.Error(jsonResp)
+	}
+
+	// Check if tickets sales already started for any given showcode of particular movie-hall
 	compositeKey = thid + sc + st
 	tktIssueStarted, err := stub.GetState(compositeKey)
 	if err != nil {
@@ -371,13 +413,12 @@ func (s *ShowsManagement) sellTicket(stub shim.ChaincodeStubInterface, args []st
 		return shim.Error(jsonResp)
 	}
 
-	toSell, err := strconv.Atoi(tkt.TicketsSold)
 	if err != nil {
 		_logger.Errorf("sellTicket: String to integer converstion failed ")
 		jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"Unable to sell the ticket\"}"
 		return shim.Error(jsonResp)
 	}
-	maxtkt, err := strconv.Atoi(td.SeatsPerHall[sc])
+
 	if err != nil {
 		_logger.Errorf("sellTicket: String to integer converstion failed ")
 		jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"Unable to sell the ticket\"}"
@@ -386,22 +427,22 @@ func (s *ShowsManagement) sellTicket(stub shim.ChaincodeStubInterface, args []st
 
 	if tktIssueStarted == nil {
 
-		if toSell > maxtkt {
+		if tkt.TicketsSold > td.SeatsPerHall[sc] {
 			_logger.Error("sellTicket: Enough tickets not available")
 			jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"Enough tickets not available\"}"
 			return shim.Error(jsonResp)
 		}
 
 		tkt.ObjType = "Tickets"
-		tkt.WaterSold, tkt.PopCornSold = strconv.Itoa(toSell), strconv.Itoa(toSell)
-		tktjson, err := json.Marshal(tkt)
+		tkt.WaterSold, tkt.PopCornSold = tkt.TicketsSold, tkt.TicketsSold
+		tktjson, _ := json.Marshal(tkt)
 		err = stub.PutState(compositeKey, tktjson)
 		if err != nil {
 			_logger.Errorf("sellTicket:PutState is Failed :" + string(err.Error()))
 			jsonResp = "{\"Data\":" + thid + ",\"ErrorDetails\":\"Unable to sell the ticket\"}"
 			return shim.Error(jsonResp)
 		}
-		_logger.Infof("sellTicket:Tickets sold successfully")
+		_logger.Infof("sellTicket:Tickets ticket.TicketsSold successfully")
 	} else {
 
 		ticket := Tickets{}
@@ -414,24 +455,24 @@ func (s *ShowsManagement) sellTicket(stub shim.ChaincodeStubInterface, args []st
 		}
 
 		tkt.ObjType = "Tickets"
-		sold, err := strconv.Atoi(ticket.TicketsSold)
+		tkt.UpdateTs = ticket.UpdateTs
+
 		if err != nil {
 			_logger.Errorf("sellTicket: String to integer converstion failed ")
 			jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"Unable to sell the ticket\"}"
 			return shim.Error(jsonResp)
 		}
 
-		if (sold + toSell) > maxtkt {
+		if (ticket.TicketsSold + tkt.TicketsSold) > td.SeatsPerHall[sc] {
 			_logger.Error("sellTicket: Enough tickets not available")
 			jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"Enough tickets not available\"}"
 			return shim.Error(jsonResp)
 		}
 
-		val := strconv.Itoa(sold + toSell)
-		tkt.TicketsSold = val
-		tkt.WaterSold, tkt.PopCornSold = val, val
+		tkt.TicketsSold = ticket.TicketsSold + tkt.TicketsSold
+		tkt.WaterSold, tkt.PopCornSold = tkt.TicketsSold, tkt.TicketsSold
 
-		updatedTkt, err := json.Marshal(tkt)
+		updatedTkt, _ := json.Marshal(tkt)
 		err = stub.PutState(compositeKey, updatedTkt)
 		if err != nil {
 			_logger.Errorf("sellTicket:PutState is Failed :" + string(err.Error()))
@@ -439,12 +480,12 @@ func (s *ShowsManagement) sellTicket(stub shim.ChaincodeStubInterface, args []st
 			return shim.Error(jsonResp)
 		}
 
-		_logger.Infof("sellTicket:Tickets sold successfully")
+		_logger.Infof("sellTicket:Tickets ticket.TicketsSold successfully")
 	}
 
 	result := map[string]interface{}{
 		"trxnid":     stub.GetTxID(),
-		"ticketSold": toSell,
+		"ticketSold": tkt.TicketsSold,
 		"message":    "Sell ticket successfull",
 	}
 	respjson, _ := json.Marshal(result)
@@ -479,8 +520,8 @@ func (s *ShowsManagement) exchangeSoda(stub shim.ChaincodeStubInterface, args []
 	}
 
 	// Check max soda count for the theatre per day
-	thid := strings.ToLower(soda.TheatreID)
-	invid := strings.ToLower(soda.InventoryID)
+	thid := soda.TheatreID
+	invid := soda.InventoryID
 
 	theatreDetails, err := stub.GetState(thid)
 
@@ -508,13 +549,6 @@ func (s *ShowsManagement) exchangeSoda(stub shim.ChaincodeStubInterface, args []
 		return shim.Error(jsonResp)
 	}
 
-	maxSoda, err := strconv.Atoi(td.MaxSodaPerDay)
-	if err != nil {
-		_logger.Errorf("exchangeSoda: String to integer converstion failed ")
-		jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"Unable to exchange soda\"}"
-		return shim.Error(jsonResp)
-	}
-
 	compositeKey := thid + invid
 	sodaDetails, err := stub.GetState(compositeKey)
 
@@ -528,10 +562,9 @@ func (s *ShowsManagement) exchangeSoda(stub shim.ChaincodeStubInterface, args []
 	}
 
 	if sodaDetails == nil {
-		c, _ := strconv.Atoi(soda.SodaSold)
-		c++
-		soda.SodaSold = strconv.Itoa(c)
-		sodajson, err := json.Marshal(soda)
+		soda.ObjType = "SodaInventory"
+		soda.SodaSold++
+		sodajson, _ := json.Marshal(soda)
 		err = stub.PutState(compositeKey, sodajson)
 		if err != nil {
 			_logger.Errorf("exchangeSoda:PutState is Failed :" + string(err.Error()))
@@ -551,23 +584,15 @@ func (s *ShowsManagement) exchangeSoda(stub shim.ChaincodeStubInterface, args []
 		}
 
 		soda.ObjType = "SodaInventory"
-		sold, err := strconv.Atoi(sodainv.SodaSold)
-		if err != nil {
-			_logger.Errorf("exchangeSoda: String to integer converstion failed ")
-			jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\"Unable to exchange soda\"}"
-			return shim.Error(jsonResp)
-		}
+		soda.UpdateTs = sodainv.UpdateTs
 
-		if (sold + 1) > maxSoda {
+		if (sodainv.SodaSold + 1) > td.MaxSodaPerDay {
 			_logger.Error("exchangeSoda: Enough soda not available")
 			jsonResp = "{\"Data\":\"\",\"ErrorDetails\":\" Enough soda not available\"}"
 			return shim.Error(jsonResp)
 		}
-
-		c, _ := strconv.Atoi(soda.SodaSold)
-		c++
-		soda.SodaSold = strconv.Itoa(c)
-		updatedinv, err := json.Marshal(soda)
+		soda.SodaSold = sodainv.SodaSold + 1
+		updatedinv, _ := json.Marshal(soda)
 		err = stub.PutState(compositeKey, updatedinv)
 		if err != nil {
 			_logger.Errorf("exchangeSoda:PutState is Failed :" + string(err.Error()))
@@ -587,7 +612,7 @@ func (s *ShowsManagement) exchangeSoda(stub shim.ChaincodeStubInterface, args []
 	return shim.Success(respjson)
 }
 
-// Generates random number - Decides if the customer is lucky to exchange one for water bottle :)
+// Generates random number - Decides if the customer is lucky enough to exchange water with soda :)
 func generateRandomNumber() bool {
 
 	// Generate Random number
