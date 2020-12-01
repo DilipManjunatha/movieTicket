@@ -23,6 +23,5 @@ Test cases to execute as peer commands
 
 ****************************
  
-5. Add theatre details
-   Input: 
+Positive scenarios are added as screenshots
 
