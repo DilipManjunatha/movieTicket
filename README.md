@@ -5,7 +5,7 @@ This model supports more than one theatre (Organizational unit/ Subsidiary) to p
 
 Organizations can add, modify all the details on Blockchain as illustrated below.
 
-Step 1: Add theatre details which consists of Total movie halls, Maximum seats per screen, Inventory detail
+Step 1: Add theatre details which consists of Total movie halls, Maximum seats per screen, Inventory detail.
 
 CouchDB data on Blockchain
 
